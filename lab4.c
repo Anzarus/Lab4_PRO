@@ -17,6 +17,58 @@ pthread_mutex_t mut22a = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mut22b = PTHREAD_MUTEX_INITIALIZER;
 
 
+
+//QUENE
+int maxQueneSize = 80;
+int currentQueneSize = 0;
+
+int queneIsFull(){
+	return currentQueneSize >= maxQueneSize;
+}
+int queneIsEmpty(){
+	return currentQueneSize <= 0;
+}
+
+//mutex which control quene and signal values for fuul and empty status
+pthread_mutex_t		MCR1 = PTHREAD_MUTEX_INITIALIZER;
+
+pthread_cond_t  	Sig1NotEmpty = PTHREAD_COND_INITIALIZER;
+pthread_cond_t  	Sig2NotFull = PTHREAD_COND_INITIALIZER;
+
+
+struct queneElem{
+	struct queneElem* next;
+	int number;
+};
+
+struct queneElem* queneBegin = NULL;
+struct queneElem* queneEnd = NULL;
+
+void addElemToQuene(){
+	struct queneElem* p = (struct queneElem*)malloc(sizeof(struct queneElem));
+	p->next = NULL;
+
+	if(queneBegin == NULL){
+		p->number = 0;
+		queneBegin = p;
+	}
+	else{
+		p->number = queneEnd->number+1;
+		queneEnd->next = p;
+	}
+	queneEnd = p;
+}
+
+
+struct queneElem* getElemFromQuene(){
+	struct queneElem* p = NULL;
+	p = queneBegin;
+	queneBegin = queneBegin->next;
+	return p;
+}
+
+
+
 //atomarri variables
 int aIntVar1 = 0, aIntVar2 = 0;
 unsigned aUnsVar1 = 0, aUnsVar2 = 0;
