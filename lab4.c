@@ -11,6 +11,10 @@ pthread_t thread4;
 pthread_t thread5;
 pthread_t thread6;
 
+//Signal variable
+pthread_cond_t sig22 = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mut22a = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mut22b = PTHREAD_MUTEX_INITIALIZER;
 
 
 //atomarri variables
@@ -48,6 +52,10 @@ void* thread_P2(void* unused){
 		
 		//Sig1+Sig2+MCR1
 		//Sig22
+		pthread_mutex_lock(&mut22a);
+		pthread_cond_signal(&sig22);
+		pthread_mutex_unlock(&mut22a);
+		
 	}
 	return NULL;
 }
@@ -121,7 +129,10 @@ void* thread_P6(void* unused){
 		unsSum = aUnsVar1 + aUnsVar2;
 		printf("Sum of unsigned values is %u\n", unsSum);
 		
-		//Sig22
+		//Sig22		
+		pthread_mutex_lock(&mut22b);
+		pthread_cond_wait(&sig22,&mut22b);
+		pthread_mutex_unlock(&mut22b);
 
 		//usage
 		printf("Usage thread6_2");
@@ -136,15 +147,15 @@ void* thread_P6(void* unused){
 
 int main(){
 	printf("thread1 create");	
-	pthread_create (&thread1,NULL,&thread_P1,NULL);
+	//pthread_create (&thread1,NULL,&thread_P1,NULL);
 	printf("thread2 create");	
 	pthread_create (&thread2,NULL,&thread_P2,NULL);
 	printf("thread3 create");	
-	pthread_create (&thread3,NULL,&thread_P3,NULL);
+	//pthread_create (&thread3,NULL,&thread_P3,NULL);
 	printf("thread4 create");	
-	pthread_create (&thread4,NULL,&thread_P4,NULL);
+	//pthread_create (&thread4,NULL,&thread_P4,NULL);
 	printf("thread5 create");	
-	pthread_create (&thread5,NULL,&thread_P5,NULL);
+	//pthread_create (&thread5,NULL,&thread_P5,NULL);
 	printf("thread6 create");	
 	pthread_create (&thread6,NULL,&thread_P6,NULL);
 
