@@ -2,14 +2,20 @@
 #include<pthread.h>
 #include<malloc.h>
 #include<semaphore.h>
-#include<unistd.h>
 
+//threads
 pthread_t thread1;
 pthread_t thread2;
 pthread_t thread3;
 pthread_t thread4;
 pthread_t thread5;
 pthread_t thread6;
+
+//time control
+int queneFullTimes = 0;
+int queneEmptyTimes = 0;
+int A[6] = {0,0,0,0,0,0};
+int timeFlag = 0;
 
 //semaphore
 sem_t SCR21;
@@ -23,10 +29,8 @@ pthread_cond_t sig21 = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mut21 = PTHREAD_MUTEX_INITIALIZER;
 int FLG21 = 0;
 
-
-
 //QUENE
-int maxQueneSize = 40;
+int maxQueneSize = 10;
 int currentQueneSize = 0;
 
 int queneIsFull(){
@@ -69,14 +73,12 @@ void addElemToQuene(){
 	queneEnd = p;
 }
 
-
 struct queneElem* getElemFromQuene(){
 	struct queneElem* p = NULL;
 	p = queneBegin;
 	queneBegin = queneBegin->next;
 	return p;
 }
-
 
 
 //atomarri variables
@@ -88,50 +90,71 @@ unsigned long aUnsLongVar1 = 0, aUnsLongVar2 = 0;
 
 //thread 1
 void* thread_P1(void* unused){
-	printf("thread1 open\n");
+	printf("1.OPEN\n");
 	struct queneElem* currentElem = NULL;
 	
 	while(1){
+		if(queneEmptyTimes == 2 && A[3]==1){
+			pthread_cond_broadcast (&sigNotEmpty);
+			currentQueneSize++;
+			break;
+		}
+
 		//Sig1+Sig2+MCR1
 		pthread_mutex_lock (&queneMutex);
-		while(queneIsEmpty()){
+		while(queneIsEmpty() && (queneEmptyTimes != 2)){
 			pthread_cond_wait (&sigNotEmpty, &queneMutex);
+			if(queneIsEmpty && (queneFullTimes - 1 == queneEmptyTimes) && queneEmptyTimes < 2){
+				queneEmptyTimes++;
+			}
+		}
+		timeFlag = 1;
+
+		if(!timeFlag || queneEmptyTimes == 2){
+			usleep(20);		
 		}
 
 		currentElem = getElemFromQuene();
 		currentQueneSize--;
 		
-		printf("Consumer thread1: element %d TAKEN; current queue length = %d;\n", currentElem->number, currentQueneSize);
+		printf("1.Consumer: element %d TAKEN; current queue length = %d;\n", 
+							currentElem->number, currentQueneSize);
 
 		pthread_mutex_unlock (&queneMutex);
 
-//		actionsWithElemOfQuene(currentElem);
+		//actionsWithElemOfQuene(currentElem);
 
 		pthread_cond_broadcast (&sigNotFull);
-
 		free (currentElem);
 		
 		//Open SCR21
 		sem_post (&SCR21);
+		printf("1.Open SCR21\n");
 	}
-	printf("Consumer thread1 stopped !!!\n");
+	printf("1.STOP !!!\n");
+	A[0] = 1;	
 	return NULL;
 }
 
 //thread 2
 void* thread_P2(void* unused){
-	printf("thread2 open\n");
+	printf("2.OPEN\n");
 	while(1){
+		if(queneFullTimes == 2 && A[5]==1){
+			break;
+		}	
+		
 		//Sig21
 		pthread_mutex_lock(&mut21);
 		while(!FLG21){		
+			printf("2.Wait sig21\n");
 			pthread_cond_wait(&sig21,&mut21);
 		}
 		FLG21 = 0;
 		pthread_mutex_unlock(&mut21);
 
 		//usage and modified
-		printf("Usage and modified thread2\n");
+		printf("2.Use and modified CR2\n");
 		__sync_fetch_and_add(&aIntVar1, aIntVar2);				//1
 		__sync_fetch_and_and(&aUnsLongVar2, aUnsLongVar1);			//4
 		__sync_add_and_fetch(&aUnsVar1, aUnsVar2);				//7
@@ -140,35 +163,52 @@ void* thread_P2(void* unused){
 		__sync_val_compare_and_swap(&aIntVar2, aIntVar1+89, aIntVar2-15);	//14
 		
 		//Sig1+Sig2+MCR1
-		
 		pthread_mutex_lock (&queneMutex);
 		
+
 		while(queneIsFull()){
 			pthread_cond_wait (&sigNotFull, &queneMutex);
+			if(queneIsFull && (queneFullTimes == queneEmptyTimes) && queneFullTimes < 2){
+				queneFullTimes++;
+				if(queneFullTimes == 2){
+					break;
+				}
+			}			
 		}
-		
+		timeFlag = 0;
+		if(queneEmptyTimes == 2 && A[5] == 1){
+			pthread_mutex_unlock (&queneMutex);
+			break;
+		}
+
+		if(timeFlag || queneEmptyTimes == 2){
+			usleep(20);		
+		}
+
 		addElemToQuene();
 		currentQueneSize++;
-		printf("Producer thread 2: element %d CREATED; current queue length = %d;\n", queneEnd->number, currentQueneSize);
+		printf("2.Producer: element %d CREATED; current queue length = %d;\n", 
+							queneEnd->number, currentQueneSize);
 		
 		pthread_mutex_unlock (&queneMutex);
 		pthread_cond_broadcast (&sigNotEmpty);
 
 		//Sig22
+		printf("2.send sig22\n");
 		pthread_cond_signal(&sig22);
 		FLG22 = 1;
-		
 	}
-	printf("Consumer thread2 stopped !!!\n");
+	printf("2.STOP !!!\n");
+	A[1] = 1;	
 	return NULL;
 }
 
 //thread 3
 void* thread_P3(void* unused){
-	printf("thread3 open\n");
+	printf("3.OPEN\n");
 	
 	//modified
-	printf("Modified thread3\n");
+	printf("3.Modified CR2\n");
 	aIntVar1 = 83;
 	aIntVar2 = -7;
 	aUnsVar1 = 651;
@@ -179,55 +219,84 @@ void* thread_P3(void* unused){
 	aUnsLongVar2 = 0xBAD718;
 
 	while(1){
+		if(A[1] == 1 && A[4] == 1 && A[5] == 1){
+			break;
+		}
 		//Sig21
-		pthread_cond_signal(&sig21);		
+		usleep(3);	
+		printf("3.Send sig21\n");		
+		pthread_cond_broadcast(&sig21);
+		FLG21 = 1;
 		//modified
-//		printf("Modified thread3_2\n");
+		__sync_fetch_and_add(&aIntVar1, aIntVar2);				//1
+		__sync_fetch_and_and(&aUnsLongVar2, aUnsLongVar1);			//4
+		
 	}
-	printf("Consumer thread3 stopped !!!\n");
+	printf("3.STOP !!!\n");
+	A[2] = 1;	
 	return NULL;
 }
 
 //thread 4
 void* thread_P4(void* unused){
-	printf("thread4 open\n");
+	printf("4.OPEN\n");
+
 	while(1){
+		if(queneFullTimes == 2){
+			pthread_cond_broadcast (&sigNotFull);
+			currentQueneSize--;
+			break;
+		}
+
 		//Sig1+Sig2+MCR1
 		pthread_mutex_lock (&queneMutex);
 		
 		while(queneIsFull()){
 			pthread_cond_wait (&sigNotFull, &queneMutex);
+			if(queneIsFull && queneFullTimes == queneEmptyTimes && queneFullTimes < 2){
+				queneFullTimes++;
+			}
 		}
-		
+		timeFlag = 0;
+
+		if(timeFlag || queneEmptyTimes == 2){
+			usleep(20);		
+		}
 		addElemToQuene();
 		currentQueneSize++;
-		printf("Producer thread 4: element %d CREATED; current queue length = %d;\n", queneEnd->number, currentQueneSize);
+		printf("4.Producer: element %d CREATED; current queue length = %d;\n", 
+							queneEnd->number, currentQueneSize);
 		
 		pthread_mutex_unlock (&queneMutex);
 		pthread_cond_broadcast (&sigNotEmpty);
-//Waiting for opening SCR21
+		
+		//Waiting for opening SCR21
 		sem_wait(&SCR21);
+		
+		printf("4.waiting SCR21\n");
 	}
-	printf("Consumer thread4 stopped !!!\n");
+	printf("4.STOP !!!\n");
+	A[3] = 1;	
 	return NULL;
 }
 
 //thread 5
 void* thread_P5(void* unused){
-	printf("thread5 open\n");
+	printf("5.OPEN\n");
 	struct queneElem* currentElem = NULL;
 	
 	while(1){
 		//Sig21
 		pthread_mutex_lock(&mut21);
 		while(!FLG21){		
+			printf("5.wait SIG21\n");
 			pthread_cond_wait(&sig21,&mut21);
 		}
 		FLG21 = 0;
 		pthread_mutex_unlock(&mut21);
 		
 		//usage and modified
-		printf("Usage and modified thread 5\n");
+		printf("5.Use and modified CR2\n");
 		__sync_add_and_fetch(&aIntVar2, aIntVar1);				//7
 		__sync_xor_and_fetch(&aUnsVar1,aUnsVar2);				//11
 		__sync_nand_and_fetch(&aIntVar1,aIntVar2);				//12
@@ -235,56 +304,65 @@ void* thread_P5(void* unused){
 		
 		//Sig1+Sig2+MCR1
 		pthread_mutex_lock (&queneMutex);
-		while(queneIsEmpty()){
+		while(queneIsEmpty() && (queneEmptyTimes != 2)){			
 			pthread_cond_wait (&sigNotEmpty, &queneMutex);
+			if(queneIsEmpty && (queneFullTimes - 1 == queneEmptyTimes) && queneEmptyTimes < 2){
+				queneEmptyTimes++;
+			}
 		}
-
+		if(queneEmptyTimes == 2){
+			pthread_mutex_unlock (&queneMutex);
+			break;
+		}
+		timeFlag = 1;
+		if(!timeFlag || queneEmptyTimes == 2){
+			usleep(20);		
+		}
 		currentElem = getElemFromQuene();
 		currentQueneSize--;
 		
-		printf("Consumer thread5: element %d TAKEN; current queue length = %d;\n", currentElem->number, currentQueneSize);
+		printf("5.Consumer: element %d TAKEN; current queue length = %d;\n", 
+						currentElem->number, currentQueneSize);
 
 		pthread_mutex_unlock (&queneMutex);
-
-//		actionsWithElemOfQuene(currentElem);
-
+		
 		pthread_cond_broadcast (&sigNotFull);
-
 		free (currentElem);
 		
 		//Close SCR21
-		sem_wait(&SCR21);
-		
+		sem_close(&SCR21);
+		printf("5.Close SCR21\n");
+
 	}
-	printf("Consumer thread5 stopped !!!\n");
+	printf("5.STOP !!!\n");
+	A[4] = 1;	
 	return NULL;
 }
 
 //thread 6
 void* thread_P6(void* unused){
-	printf("thread6 open\n");
-	int intSum;
-	unsigned unsSum;
-	long longSum;
-	unsigned long unsLongSum;
+	printf("6.OPEN\n");
 	while(1){
+		if(queneEmptyTimes == 2){
+			break;
+		}
 		//Sig21
 		pthread_mutex_lock(&mut21);
 		while(!FLG21){		
+			printf("6.wait sig21\n");
 			pthread_cond_wait(&sig21,&mut21);
 		}
 		FLG21 = 0;
 		pthread_mutex_unlock(&mut21);
 
 		//usage
-		printf("Usage thread6\n");		
-		intSum = aIntVar1 + aIntVar2;
-		printf("Sum of int values is %d\n", intSum);
-		unsSum = aUnsVar1 + aUnsVar2;
-		printf("Sum of unsigned values is %u\n", unsSum);
+		printf("6.Use CR2\n");		
+		__sync_fetch_and_add(&aIntVar1, aIntVar2);				//1
+		__sync_fetch_and_and(&aUnsLongVar2, aUnsLongVar1);			//4
 		
 		//Sig22		
 		pthread_mutex_lock(&mut22);
+		printf("6.wait sig22\n");
 		while(!FLG22){
 			pthread_cond_wait(&sig22,&mut22);
 		}
@@ -292,13 +370,12 @@ void* thread_P6(void* unused){
 		FLG22 = 0;		
 		
 		//usage
-		printf("Usage thread6_2\n");
-		longSum = aLongVar1 + aLongVar2;
-		printf("Sum of long values is %ld\n", longSum);
-		unsLongSum = aUnsLongVar1 + aUnsLongVar2;
-		printf("Sum of unsigned values is %lu\n", unsLongSum);
+		printf("6.Use CR2\n");
+		__sync_fetch_and_add(&aIntVar1, aIntVar2);				//1
+		__sync_fetch_and_and(&aUnsLongVar2, aUnsLongVar1);			//4		
 	}
-	printf("Consumer thread6 stopped !!!\n");
+	printf("6.STOP!!!\n");
+	A[5] = 1;	
 	return NULL;
 }
 
@@ -309,9 +386,9 @@ int main(){
 	printf("thread2 create\n");	
 	pthread_create (&thread2,NULL,&thread_P2,NULL);
 	printf("thread3 create\n");	
-	//pthread_create (&thread3,NULL,&thread_P3,NULL);
+	pthread_create (&thread3,NULL,&thread_P3,NULL);
 	printf("thread4 create\n");	
-	pthread_create (&thread4,NULL,&thread_P4,NULL);
+ 	pthread_create (&thread4,NULL,&thread_P4,NULL);
 	printf("thread5 create\n");	
 	pthread_create (&thread5,NULL,&thread_P5,NULL);
 	printf("thread6 create\n");	
